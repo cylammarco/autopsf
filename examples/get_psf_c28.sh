@@ -1,0 +1,1 @@
+python .\get_psf.py .\sinistro_image\tfn1m013-fa20-20210903-0434-e91.fits
