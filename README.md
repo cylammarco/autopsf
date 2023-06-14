@@ -7,8 +7,8 @@ Please see more in the examples folder.
 
 Example effective PSF built for a defocused image:
 
-![alt text](https://github.com/cylammarco/psf/blob/75e0ba7ba2e3ff9c1e2158649b9e8205f03d5e7e/examples/sbig_image/cpt1m013-kb76-20140501-0422-e90_psf.png?raw=true)
+![alt text](https://github.com/cylammarco/psf/blob/main/examples/sbig_image/cpt1m013-kb76-20140501-0422-e90_psf.png?raw=true)
 
 and the stmaps used to build that
 
-![alt text](https://github.com/cylammarco/psf/blob/75e0ba7ba2e3ff9c1e2158649b9e8205f03d5e7e/examples/sbig_image/cpt1m013-kb76-20140501-0422-e90_psf_stamps.png?raw=true)
+![alt text](https://github.com/cylammarco/psf/blob/main/examples/sbig_image/cpt1m013-kb76-20140501-0422-e90_psf_stamps.png?raw=true)
