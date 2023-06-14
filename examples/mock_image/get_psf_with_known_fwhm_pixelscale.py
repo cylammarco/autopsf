@@ -67,7 +67,9 @@ for folder in folder_list:
             stars_filename=f"{folder}{os.sep}{filepath_body}_good_stars",
             save_stars_tbl=True,
             stars_tbl_overwrite=True,
-            stars_tbl_filename=f"{folder}{os.sep}{filepath_body}_good_stars_tbl",
+            stars_tbl_filename=(
+                f"{folder}{os.sep}{filepath_body}_good_stars_tbl"
+            ),
         )
 
         psf.build_psf(
@@ -92,7 +94,3 @@ for folder in folder_list:
             psf_figname=f"{folder}{os.sep}{filepath_body}_epsf.png",
             num_iteration=50,
         )
-
-
-if __name__ == "__main__":
-    main()

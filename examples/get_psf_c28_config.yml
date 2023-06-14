@@ -1,0 +1,56 @@
+# other pre-processing
+remove_cr: True
+kwargs_remove_cr:
+  gain: 1.7
+  readnoise: 9.0
+
+subtract_background: True
+sigma_clip_sigma: 3.0
+background_box_size: 15
+background_filter_size: 15
+
+# guess from header
+seeing: null
+pixelscale: null
+seeing_keyword: ["seeing", "l1seeing", "l1see", "dimmsee", "fwhm", "l1fwhm", "dimmfwhm"]
+pixelscale_keyword: ["pixscale", "pixelscl", "pixscl", "arcpix", "arcscpix", "secpix", "aspix"]
+
+# get_good_stars
+threshold: null
+threshold_snr: null
+threshold_clip_percentile: 80.0
+box_size: null # null to compute from the seeing and pixelscale
+fwhm: null # use the seeing value if not given
+convolve: True
+sigma: null
+npeaks: 100
+stars_tbl: null
+edge_size: 15
+get_good_stars_output_folder: null # null will save to the same directory as the input
+save_stars: True
+stars_overwrite: True
+stars_filename: null # null will append "_good_stars" to the input file name
+save_stars_tbl: True
+stars_tbl_overwrite: True
+stars_tbl_filename: null # null will append "good_stars_tbl" to the input file name
+
+# build_psf
+oversampling: null
+smoothing_kernel: "quadratic"
+create_figure: True
+save_figure: True
+stamps_nrows: null
+stamps_ncols: null
+figsize: [10, 10]
+stamps_figname: null # null will append "PSF_stamps" to the input file name
+psf_figname: null # null will append "PSF" to the input file name
+build_psf_output_folder: null # null will save to the same directory as the input
+save_psf_model: True
+model_overwrite: True
+model_filename: null # null will append "_psf_model" to the input file name
+save_center_list: True
+center_list_overwrite: True
+center_list_filename: null # null will append "psf_center_list" to the input file name
+build_psf_kwargs:
+  num_iteration: 100
+  n_recenter: 25

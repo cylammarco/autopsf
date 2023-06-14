@@ -1,18 +1,14 @@
-import argparse
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import os
 import pickle
-import sys
 
 import numpy as np
-import photutils
-from astropy.io import fits
 from astropy.nddata import NDData
-from astropy.stats import SigmaClip, sigma_clipped_stats
 from astropy.table import Table
 from astropy.visualization import simple_norm
-from astroscrappy import detect_cosmics
 from matplotlib import pyplot as plt
-from photutils.background import Background2D, MMMBackground
 from photutils.detection import DAOStarFinder
 from photutils.psf import extract_stars
 from psfr.psfr import stack_psf
@@ -21,14 +17,13 @@ from scipy import signal
 
 def get_good_stars(
     data,
-    subtract_background=True,
     threshold=None,
     threshold_snr=None,
     threshold_clip_percentile=80.0,
+    box_size=25,
+    fwhm=None,
     convolve=True,
     sigma=None,
-    fwhm=None,
-    box_size=15,
     npeaks=100,
     stars_tbl=None,
     edge_size=15,
@@ -39,29 +34,45 @@ def get_good_stars(
     save_stars_tbl=True,
     stars_tbl_overwrite=True,
     stars_tbl_filename="good_stars_tbl",
-    **args,
 ):
     """
     Get the centroids of the bright sources to prepare to compute the FWHM.
+    The data should be background subtracted, and cosmic ray cleaned.
 
     Parameters
     ----------
     data: array_like
         The 2D array of the image.
-    subtract_background: bool (Default: True)
-        Set to True to perform background subtraction
     threshold: float or array-like (Default: None)
         The data value or pixel-wise data values to be used for the
         detection threshold. A 2D threshold must have the same shape as
         data. See photutils.detection.detect_threshold for one way to
-        create a threshold image.
-    fwhm: float
-        In unit of pixels.
+        create a threshold image. This overrides the next two arguments
+        threshold_snr and threshold_clip_percentile.
+    threshold_snr: float (Default: None)
+        If a threshold is not provided, it will be estimated from the image
+        by measuring the standard deviation of the image excluding the values
+        lower than the threshold_clip_percentile percentile. This SNR is the
+        multiplier to this standard deviation to define the threshold.
+    threshold_clip_percentile: float (Default: 80.0)
+        The percentile of the image value that will be clipped for detemining
+        the standard deviation of the image background.
     box_size: scalar or tuple, optional (Default: 15)
         The size of the local region to search for peaks at every point in
         data. If box_size is a scalar, then the region shape will be
         (box_size, box_size). Either box_size or footprint must be defined.
         If they are both defined, then footprint overrides box_size.
+    fwhm: float (Default: None)
+        The full with at half maximum in unit of pixels. If not provided,
+        it takes the size 1/8 of the box_size
+    convolve: bool (Default: True)
+        Set to True to first convovle the image with a Gaussian kernel of
+        size sigma (next argument). This allows better centroiding of
+        defocused images. This is ONLY USED for centroiding, the building of
+        the PSF will be using the input data.
+    sigma: float (Default: None)
+        Defining the size of the Gaussian kernel, if not provided, it takes
+        the value of fwhm/2.355.
     npeaks: int, optional (Default: 100)
         The maximum number of peaks to return. When the number of detected
         peaks exceeds npeaks, the peaks with the highest peak intensities
@@ -85,21 +96,29 @@ def get_good_stars(
         object in the input data must also have a valid wcs attribute. Pixel
         coordinates (in x and y columns) will be ignored.
         Optionally, each catalog may also contain an id column representing the
-        ID/name of stars. If this column is not present then the extracted stars
-        will be given an id number corresponding the the table row number
-        (starting at 1). Any other columns present in the input catalogs will be
-        ignored.
+        ID/name of stars. If this column is not present then the extracted
+        stars will be given an id number corresponding the the table row number
+        (starting at 1). Any other columns present in the input catalogs will
+        be ignored.
     edge_size: int (Default: 50)
         The number of pixels from the detector edges to be removed.
-    size: int or array_like (int), optional (Default: 25)
-        The extraction box size along each axis. If size is a scalar then a
-        square box of size size will be used. If size has two elements, they
-        should be in (ny, nx) order. The size must be greater than or equal to
-        3 pixel for both axes. Size must be odd in both axes; if either is even,
-        it is padded by one to force oddness.
-    **args:
-        Extra arguments for astropy.nddata.NDData which holds the input
-        data for photutils.psf.extract_stars().
+    output_folder: str (Default: ".")
+        The base folder where the files will be saved. Defaulted to the current
+        directory.
+    save_stars: bool (Default: True)
+        Set to True to save the extracted stars, an EPSFStars instance
+        (output of photutils.extract_stars())
+    stars_overwrite: bool (Default: True)
+        Set to True to overwrite existing star file.
+    stars_filename: str (Default: "good_stars")
+        Filename of the EPSFStars instance.
+    save_stars_tbl: bool (Default: True)
+        Set to True to save the star_tbl.
+    stars_tbl_overwrite: bool (Default: True)
+        Set to True to overwrite existing star_tbl file.
+    stars_tbl_filename: str (Default: "good_stars_tbl")
+        Filename of the star_tbl.
+
     Return
     ------
     stars: EPSFStars instance
@@ -108,21 +127,8 @@ def get_good_stars(
         A table containing the x and y pixel location of the peaks and their
         values. If centroid_func is input, then the table will also contain the
         centroid position. If no peaks are found then None is returned.
+
     """
-
-    data = detect_cosmics(data)[1]
-
-    if subtract_background:
-        sigma_clip = SigmaClip(sigma=3.0)
-        bkg_estimator = MMMBackground()
-        bkg = Background2D(
-            data,
-            (box_size, box_size),
-            filter_size=(box_size, box_size),
-            sigma_clip=sigma_clip,
-            bkg_estimator=bkg_estimator,
-        )
-        data -= bkg.background
 
     if threshold_snr is None:
         if convolve:
@@ -207,13 +213,13 @@ def get_good_stars(
             ):
                 print(
                     stars_tbl_output_path + " already exists. Use a "
-                    "different name or set overwrite to True. EPSFModel is not "
-                    "saved to disk."
+                    "different name or set overwrite to True. EPSFModel is "
+                    "not saved to disk."
                 )
             else:
                 np.save(stars_tbl_output_path, stars_tbl)
 
-    nddata = NDData(data=data, **args)
+    nddata = NDData(data=data)
 
     # assign npeaks mask again because if stars_tbl is given, the npeaks
     # have to be selected
@@ -240,7 +246,7 @@ def build_psf(
     stars,
     oversampling=None,
     smoothing_kernel="quadratic",
-    create_figure=False,
+    create_figure=True,
     save_figure=True,
     stamps_nrows=None,
     stamps_ncols=None,
@@ -250,16 +256,16 @@ def build_psf(
     output_folder=".",
     save_psf_model=True,
     model_overwrite=True,
-    model_filename="epsf_model",
+    model_filename="psf_model",
     save_center_list=True,
-    stars_overwrite=True,
-    center_list_filename="epsf_center_list",
+    center_list_overwrite=True,
+    center_list_filename="psf_center_list",
     **kwargs,
 ):
     """
-    data is best background subtracted
     PSF is built using the 'stars' provided, but the stamps_nrows and
     stamps_ncols are only used for controlling the display
+
     Parameters
     ----------
     stars: EPSFStars instance
@@ -276,8 +282,11 @@ def build_psf(
         and 'quadratic' kernels are derived from fourth and second degree
         polynomials, respectively. Alternatively, a custom 2D array can be
         input. If None then no smoothing will be performed.
-    create_figure: boolean (Default: False)
-        Display the cutouts of the regions used for building the PSF.
+    create_figure: bool (Default: True)
+        Create and display the cutouts of the regions used for building the
+        PSF.
+    save_figure: bool (Default: True)
+        Save the figure, only possible if it is created.
     stamps_nrows: (Default: None)
         Number of rows to display. This does NOT affect the number of stars
         used for building the PSF.
@@ -290,19 +299,44 @@ def build_psf(
         Name of the output figures.
     psf_figname: str (Default: "PSF")
         Name of the output figures.
+    output_folder: str (Default: ".")
+        The base folder where the files will be saved. Defaulted to the current
+        directory.
+    save_psf_model: bool (Default: True)
+        Save the effective PSF as npy.
+    model_overwrite: bool (Default: True)
+        Set to True to overwrite.
+    model_filename: str (Default: "psf_model")
+        Filename of the effective PSF model.
+    save_center_list: bool (Default: True)
+        Save the centroid position of the points used to build the PSF. The
+        list can be slightly different to the position of the input star_tbl
+        positions because psfr performs recentering during the building of
+        the PSF.
+    center_list_overwrite: bool (Default: True)
+        Set to True to overwrite.
+    center_list_filename: str (Default: "psf_center_list")
+        Filename of the center_list.
     **kwargs
         Extra arguments for psfr.stack_psf().
+
     Return
     ------
-    epsf: EPSFModel object
-        The constructed ePSF.
-    fitted_stars: EPSFStars object
-        The input stars with updated centers and fluxes derived from fitting
-        the output epsf.
+    psf_guess: numpy.ndarray
+        The constructed effective PSF array in the oversampled resolution.
+    mask_list:
+        List of masks for each individual star's pixel to be included in the
+        fit or not. 0 means excluded, 1 means included. This list is updated
+        with all the criteria applied on the fitting and might deviate from
+        the input mask_list.
+    center_list:
+        List of astrometric centers relative to the center pixel of the
+        individual stars.
     oversampling:
         Return the oversampling factor used. It can be different from the
         input because if the input is too large, the factor will be reduced
         automatically.
+
     """
 
     if oversampling is None:
@@ -390,9 +424,9 @@ def build_psf(
 
         if os.path.exists(model_output_path) and (not model_overwrite):
             print(
-                model_output_path + " already exists. Use a different name "
-                "or set overwrite to True. EPSFModel is not "
-                "saved to disk."
+                model_output_path
+                + " already exists. Use a different name or set overwrite "
+                "to True. PSF model is not saved to disk."
             )
 
         else:
@@ -403,12 +437,13 @@ def build_psf(
             output_folder, center_list_filename
         )
 
-        if os.path.exists(center_list_output_path) and (not stars_overwrite):
+        if os.path.exists(center_list_output_path) and (
+            not center_list_overwrite
+        ):
             print(
                 center_list_output_path
-                + " already exists. Use a different name "
-                "or set overwrite to True. EPSFStar is not "
-                "saved to disk."
+                + " already exists. Use a different name or set overwrite "
+                "to True. center_list is not saved to disk."
             )
 
         else:

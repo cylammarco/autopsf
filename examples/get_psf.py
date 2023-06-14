@@ -5,70 +5,45 @@
 
 import os
 import sys
-from argparse import ArgumentParser
 
 import numpy as np
+import yaml
 from astropy.io import fits
+from astropy.stats import SigmaClip
+from astroscrappy import detect_cosmics
+from photutils.background import Background2D, MMMBackground
 from psf import psf
 
-# Configure the parser
-parser = ArgumentParser(description="Configure seeing and pixelscale.")
+HERE = os.getcwd()
 
-parser.add_argument("filename")
+# Get config file
+filename = sys.argv[1]
+param_filename = sys.argv[2]
+params_path = os.path.join(HERE, param_filename)
+input_file_path = os.path.dirname(os.path.abspath(filename))
 
-parser.add_argument(
-    "--convolve",
-    default=True,
-    help="Set to convovle the image with a gaussian before centroiding.",
-)
-parser.add_argument(
-    "--threshold",
-    default=None,
-    help="the threshold of the source detection.",
-)
-parser.add_argument(
-    "--threshold-clip-percentile",
-    default=80.0,
-    help="the upper limit of the data to be clipped to determine the threshold.",
-)
-parser.add_argument(
-    "--threshold-snr",
-    default=None,
-    help="S/N of the source detection.",
-)
-parser.add_argument(
-    "--seeing-keyword",
-    default="SEEING",
-    help="The header keyword for the seeing (arcsec)",
-)
-parser.add_argument(
-    "--seeing",
-    default=None,
-    help="The seeing (arcsec).",
-)
-parser.add_argument(
-    "--pixelscale-keyword",
-    default="PIXSCALE",
-    help="The header keyword for the pixel scale (arcsec per pixel).",
-)
-parser.add_argument(
-    "--pixelscale",
-    default=None,
-    help="The pixel scale (arcsec per pixel).",
-)
-args = parser.parse_args()
+if not os.path.isabs(params_path):
+    params_path = os.path.abspath(params_path)
+
+print("Reading parameters from " + params_path + ".")
+
+with open(params_path, "r") as stream:
+    params = yaml.safe_load(stream)
 
 
-extension = os.path.splitext(args.filename)[-1]
+extension = os.path.splitext(filename)[-1]
+
+# remove the extensions in the filename
 if extension in [".gz", ".bz2", ".xz"]:
-    filename_no_extension = os.path.splitext(
-        os.path.splitext(args.filename)[0]
-    )[0]
+    filename_no_extension = os.path.splitext(os.path.splitext(filename)[0])[0]
 else:
-    filename_no_extension = os.path.splitext(args.filename)[0]
+    filename_no_extension = os.path.splitext(filename)[0]
+
+# remove folders in the path
+filename_no_extension = filename_no_extension.split(os.sep)[-1]
 
 if extension == ".npy":
-    image_data = np.load(args.filename)
+    image_data = np.load(filename)
     image_header = None
 
 elif extension.lower() in [
@@ -77,10 +52,12 @@ elif extension.lower() in [
     ".fts",
     ".new",
     ".gz",
-    "bz2",
-    "xz",
+    ".bz",
+    ".bz2",
+    ".fz",
+    ".xz",
 ]:
-    fits_hdu = fits.open(args.filename)
+    fits_hdu = fits.open(filename)
 
     # check if there is data in the first extension HDU where the image
     # should be found.
@@ -100,76 +77,157 @@ else:
         f"{extension} is given."
     )
 
-# Assume in the unit of: arcsec
-if args.seeing is None:
-    try:
-        seeing = float(image_header[args.seeing_keyword])
 
-    except (KeyError, TypeError) as e:
-        print(e)
-        print("seeing is set to 1.5")
-        seeing = 1.5
-
+if params["get_good_stars_output_folder"] is None:
+    get_good_stars_output_folder = input_file_path
 else:
-    seeing = float(args.seeing)
+    get_good_stars_output_folder = params["get_good_stars_output_folder"]
+
+if params["build_psf_output_folder"] is None:
+    build_psf_output_folder = input_file_path
+else:
+    build_psf_output_folder = params["build_psf_output_folder"]
+
+lowercase_header = [x.lower() for x in image_header]
+
+# Assume in the unit of: arcsec
+if params["seeing"] is None:
+    if isinstance(params["seeing_keyword"], str):
+        seeing = float(image_header[params["seeing_keyword"]])
+        print(f"seeing is set to {seeing}")
+    else:
+        if np.in1d(lowercase_header, params["seeing_keyword"]).any():
+            # Get the exposure time for the light frames
+            seeing_keyword_idx = int(
+                np.where(np.in1d(params["seeing_keyword"], lowercase_header))[
+                    0
+                ][0]
+            )
+            seeing_keyword = params["seeing_keyword"][seeing_keyword_idx]
+            seeing = float(image_header[seeing_keyword])
+            print(f"seeing is set to {seeing}")
+        else:
+            seeing = 1.5
+            print("seeing is set to 1.5")
+else:
+    seeing = float(params["seeing"])
+    print(f"seeing is set to {seeing}")
 
 # Assume in the unit of: arcsec per pixel
-if args.pixelscale is None:
-    try:
-        pixel_scale = float(image_header[args.pixelscale_keyword])
-
-    except (KeyError, TypeError) as e:
-        print(e)
-        print("pixel scale is set to 0.25")
-        pixel_scale = 0.25
-
+if params["pixelscale"] is None:
+    if isinstance(params["pixelscale_keyword"], str):
+        pixel_scale = float(image_header[params["pixelscale_keyword"]])
+        print(f"pixel_scale is set to {pixel_scale}")
+    else:
+        if np.in1d(lowercase_header, params["pixelscale_keyword"]).any():
+            # Get the exposure time for the light frames
+            pixelscale_keyword_idx = int(
+                np.where(
+                    np.in1d(params["pixelscale_keyword"], lowercase_header)
+                )[0][0]
+            )
+            pixelscale_keyword = params["pixelscale_keyword"][
+                pixelscale_keyword_idx
+            ]
+            pixel_scale = float(image_header[pixelscale_keyword])
+            print(f"pixel_scale is set to {pixel_scale}")
+        else:
+            pixel_scale = 0.25
+            print("pixel scale is set to 0.25")
 else:
-    pixel_scale = float(args.pixelscale)
+    pixel_scale = float(params["pixelscale"])
+    print(f"pixel_scale is set to {pixel_scale}")
 
 # Assume in the unit of: cnt per e-
+if params["remove_cr"]:
+    image_data = detect_cosmics(image_data, **params["kwargs_remove_cr"])[1]
+
+if params["subtract_background"]:
+    sigma_clip = SigmaClip(sigma=params["sigma_clip_sigma"])
+    bkg_estimator = MMMBackground()
+    bkg = Background2D(
+        image_data,
+        (params["background_box_size"], params["background_box_size"]),
+        filter_size=(
+            params["background_filter_size"],
+            params["background_filter_size"],
+        ),
+        sigma_clip=sigma_clip,
+        bkg_estimator=bkg_estimator,
+    )
+    image_data -= bkg.background
 
 # set the box size to 2 * 2 * seeing (box size has to be odd)
 box_size = int(np.ceil(seeing / pixel_scale) * 4 + 1)
 
+if params["stars_filename"] is None:
+    stars_filename = filename_no_extension + "_good_stars"
+else:
+    stars_filename = params["stars_filename"]
+
+if params["stars_tbl_filename"] is None:
+    stars_tbl_filename = filename_no_extension + "_good_stars_tbl"
+else:
+    stars_tbl_filename = params["stars_tbl_filename"]
+
+
 stars, stars_tbl = psf.get_good_stars(
     image_data,
-    subtract_background=True,
-    threshold=args.threshold,
-    threshold_snr=args.threshold_snr,
+    threshold=params["threshold"],
+    threshold_snr=params["threshold_snr"],
     fwhm=seeing,
     box_size=box_size,
-    npeaks=100,
-    stars_tbl=None,
-    edge_size=15,
-    output_folder=".",
-    save_stars=True,
-    stars_overwrite=True,
-    stars_filename=filename_no_extension + "_good_stars",
-    save_stars_tbl=True,
-    stars_tbl_overwrite=True,
-    stars_tbl_filename=filename_no_extension + "_good_stars_tbl",
+    npeaks=params["npeaks"],
+    stars_tbl=params["stars_tbl"],
+    edge_size=params["edge_size"],
+    output_folder=get_good_stars_output_folder,
+    save_stars=params["save_stars"],
+    stars_overwrite=params["stars_overwrite"],
+    stars_filename=stars_filename,
+    save_stars_tbl=params["save_stars_tbl"],
+    stars_tbl_overwrite=params["stars_tbl_overwrite"],
+    stars_tbl_filename=stars_tbl_filename,
 )
+
+
+if params["stamps_figname"] is None:
+    stamps_figname = filename_no_extension + "_psf_stamps"
+else:
+    stamps_figname = params["stamps_figname"]
+
+if params["psf_figname"] is None:
+    psf_figname = filename_no_extension + "_psf"
+else:
+    psf_figname = params["psf_figname"]
+
+if params["model_filename"] is None:
+    model_filename = filename_no_extension + "_psf_model"
+else:
+    model_filename = params["model_filename"]
+
+if params["center_list_filename"] is None:
+    center_list_filename = filename_no_extension + "_center_list"
+else:
+    center_list_filename = params["center_list_filename"]
+
 
 psf_guess, mask_list, center_list, oversampling = psf.build_psf(
     stars,
-    oversampling=None,
-    smoothing_kernel="quadratic",
-    create_figure=True,
-    save_figure=True,
-    stamps_nrows=None,
-    stamps_ncols=None,
-    figsize=(10, 10),
-    stamps_figname=filename_no_extension + "_PSF_stamps",
-    psf_figname=filename_no_extension + "_PSF",
-    output_folder=".",
-    save_epsf_model=True,
-    model_overwrite=True,
-    model_filename=filename_no_extension + "_epsf_model",
-    save_epsf_star=True,
-    stars_overwrite=True,
-    center_list_filename=filename_no_extension + "_epsf_star",
-    num_iteration=100,
-    n_recenter=25,
+    oversampling=params["oversampling"],
+    smoothing_kernel=params["smoothing_kernel"],
+    create_figure=params["create_figure"],
+    save_figure=params["save_figure"],
+    stamps_nrows=params["stamps_nrows"],
+    stamps_ncols=params["stamps_ncols"],
+    figsize=params["figsize"],
+    stamps_figname=stamps_figname,
+    psf_figname=psf_figname,
+    output_folder=build_psf_output_folder,
+    save_psf_model=params["save_psf_model"],
+    model_overwrite=params["model_overwrite"],
+    model_filename=model_filename,
+    save_center_list=params["save_center_list"],
+    center_list_overwrite=params["center_list_overwrite"],
+    center_list_filename=center_list_filename,
+    **params["build_psf_kwargs"],
 )
-
-print(center_list)

@@ -1,0 +1,57 @@
+# other pre-processing
+remove_cr: True
+kwargs_remove_cr:
+  gain: 1.0
+  readnoise: 10.0
+
+subtract_background: True
+sigma_clip_sigma: 3.0
+background_box_size: 15
+background_filter_size: 15
+
+# guess from header
+seeing:
+pixelscale:
+seeing_keyword: ["seeing", "l1seeing", "l1see", "dimmsee", "fwhm", "l1fwhm", "dimmfwhm"]
+pixelscale_keyword: ["pixscale", "pixelscl", "pixscl", "arcpix", "arcscpix", "secpix", "aspix"]
+
+# get_good_stars
+threshold: None
+threshold_snr: None
+threshold_clip_percentile: 80.0
+box_size: 15
+fwhm: None # use the seeing value if not given
+convolve: True
+sigma: None
+npeaks: 100
+stars_tbl: None
+edge_size: 15
+get_good_stars_output_folder: "."
+save_stars: True
+stars_overwrite: True
+stars_filename: "good_stars"
+save_stars_tbl: True
+stars_tbl_overwrite: True
+stars_tbl_filename: "good_stars_tbl"
+extract_stars_kwargs:
+
+# build_psf
+oversampling: None
+smoothing_kernel: "quadratic"
+create_figure: True
+save_figure: True
+stamps_nrows: None
+stamps_ncols: None
+figsize: (10, 10)
+stamps_figname: "PSF_stamps"
+psf_figname: "PSF"
+build_psf_output_folder: "."
+save_psf_model: True
+model_overwrite: True
+model_filename: "epsf_model"
+save_center_list: True
+center_list_overwrite: True
+center_list_filename: "epsf_center_list"
+build_psf_kwargs:
+  num_iteration: 100
+  n_recenter: 25
