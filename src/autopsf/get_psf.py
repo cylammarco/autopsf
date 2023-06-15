@@ -7,13 +7,14 @@ import os
 import sys
 
 import numpy as np
+import psf
 import yaml
 from astropy.io import fits
 from astropy.stats import SigmaClip
 from astroscrappy import detect_cosmics
 from photutils.background import Background2D, MMMBackground
-from psf import psf
 
+# This returns where the Python instance started, not where this script is
 HERE = os.getcwd()
 
 # Get config file
@@ -187,6 +188,7 @@ stars, stars_tbl = psf.get_good_stars(
     save_stars_tbl=params["save_stars_tbl"],
     stars_tbl_overwrite=params["stars_tbl_overwrite"],
     stars_tbl_filename=stars_tbl_filename,
+    **params["get_good_stars_kwargs"],
 )
 
 
@@ -214,6 +216,7 @@ else:
 psf_guess, mask_list, center_list, oversampling = psf.build_psf(
     stars,
     oversampling=params["oversampling"],
+    return_oversampled=params["return_oversampled"],
     smoothing_kernel=params["smoothing_kernel"],
     create_figure=params["create_figure"],
     save_figure=params["save_figure"],

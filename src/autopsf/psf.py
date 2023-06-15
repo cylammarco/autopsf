@@ -12,7 +12,9 @@ from matplotlib import pyplot as plt
 from photutils.detection import DAOStarFinder
 from photutils.psf import extract_stars
 from psfr.psfr import stack_psf
-from scipy import signal
+from scipy import ndimage, signal
+
+__all__ = ["get_good_stars", "build_psf"]
 
 
 def get_good_stars(
@@ -34,6 +36,7 @@ def get_good_stars(
     save_stars_tbl=True,
     stars_tbl_overwrite=True,
     stars_tbl_filename="good_stars_tbl",
+    **kwargs,
 ):
     """
     Get the centroids of the bright sources to prepare to compute the FWHM.
@@ -118,6 +121,8 @@ def get_good_stars(
         Set to True to overwrite existing star_tbl file.
     stars_tbl_filename: str (Default: "good_stars_tbl")
         Filename of the star_tbl.
+    **kwargs:
+        keyword arguments for DAOStarFinder.
 
     Return
     ------
@@ -175,7 +180,7 @@ def get_good_stars(
 
     if stars_tbl is None:
         # detect peaks and remove sources near the edge
-        daofind = DAOStarFinder(fwhm=fwhm, threshold=threshold, peakmax=60000)
+        daofind = DAOStarFinder(fwhm=fwhm, threshold=threshold, **kwargs)
         peaks_tbl = daofind(
             data_convolved[edge_size:-edge_size, edge_size:-edge_size]
         )
@@ -245,6 +250,7 @@ def get_good_stars(
 def build_psf(
     stars,
     oversampling=None,
+    return_oversampled=False,
     smoothing_kernel="quadratic",
     create_figure=True,
     save_figure=True,
@@ -358,6 +364,13 @@ def build_psf(
     psf_guess, center_list, mask_list = stack_psf(
         postage_stamps, oversampling=oversampling, **kwargs
     )
+
+    if not return_oversampled:
+        postage_stamp_size = len(postage_stamps[0][0])
+        psf_guess_size = len(psf_guess[0])
+        psf_guess = ndimage.zoom(
+            psf_guess, postage_stamp_size / psf_guess_size, grid_mode=True
+        )
 
     if create_figure:
         n_star = len(postage_stamps)

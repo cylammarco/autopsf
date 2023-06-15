@@ -3,9 +3,10 @@
 
 """Initialise the import"""
 
-from . import psf
+from . import get_psf, psf
 
 __all__ = [
     "psf",
+    "get_psf",
 ]
 __status__ = "Production"

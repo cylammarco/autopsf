@@ -34,9 +34,12 @@ save_stars_tbl: True
 stars_tbl_overwrite: True
 stars_tbl_filename: "good_stars_tbl"
 extract_stars_kwargs:
+get_good_stars_kwargs:
+  peakmax: 60000
 
 # build_psf
 oversampling: None
+return_oversampled: False
 smoothing_kernel: "quadratic"
 create_figure: True
 save_figure: True
