@@ -172,7 +172,7 @@ else:
     stars_tbl_filename = params["stars_tbl_filename"]
 
 
-stars, stars_tbl = psf.get_good_stars(
+stars, stars_tbl, threshold, fwhm = psf.get_good_stars(
     image_data,
     threshold=params["threshold"],
     threshold_snr=params["threshold_snr"],
