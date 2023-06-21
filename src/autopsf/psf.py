@@ -244,7 +244,7 @@ def get_good_stars(
             with open(stars_output_path, "wb+") as f:
                 pickle.dump(stars, f)
 
-    return stars, stars_tbl
+    return stars, stars_tbl, threshold, fwhm
 
 
 def build_psf(

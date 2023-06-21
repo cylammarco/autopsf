@@ -7,12 +7,13 @@ import os
 import sys
 
 import numpy as np
-import psf
 import yaml
 from astropy.io import fits
 from astropy.stats import SigmaClip
 from astroscrappy import detect_cosmics
 from photutils.background import Background2D, MMMBackground
+
+from . import psf
 
 # This returns where the Python instance started, not where this script is
 HERE = os.getcwd()
@@ -35,7 +36,7 @@ with open(params_path, "r") as stream:
 extension = os.path.splitext(filename)[-1]
 
 # remove the extensions in the filename
-if extension in [".gz", ".bz2", ".xz"]:
+if extension in [".gz", ".bz", ".bz2", ".xz", ".fz"]:
     filename_no_extension = os.path.splitext(os.path.splitext(filename)[0])[0]
 else:
     filename_no_extension = os.path.splitext(filename)[0]
