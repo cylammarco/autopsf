@@ -7,13 +7,12 @@ import os
 import sys
 
 import numpy as np
+import psf
 import yaml
 from astropy.io import fits
 from astropy.stats import SigmaClip
 from astroscrappy import detect_cosmics
 from photutils.background import Background2D, MMMBackground
-
-from . import psf
 
 # This returns where the Python instance started, not where this script is
 HERE = os.getcwd()
