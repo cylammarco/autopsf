@@ -34,7 +34,7 @@ save_stars_tbl: True
 stars_tbl_overwrite: True
 stars_tbl_filename: null # null will append "good_stars_tbl" to the input file name
 get_good_stars_kwargs:
-  peakmax: 60000
+  peakmax: 55000
 
 # build_psf
 oversampling: null
@@ -57,3 +57,4 @@ center_list_filename: null # null will append "psf_center_list" to the input fil
 build_psf_kwargs:
   num_iteration: 100
   n_recenter: 25
+  saturation_limit: 55000

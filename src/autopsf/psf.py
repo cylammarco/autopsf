@@ -24,6 +24,7 @@ def get_good_stars(
     threshold_clip_percentile=80.0,
     box_size=25,
     fwhm=None,
+    minsep_fwhm=2.5,
     convolve=True,
     sigma=None,
     npeaks=100,
@@ -68,6 +69,8 @@ def get_good_stars(
     fwhm: float (Default: None)
         The full with at half maximum in unit of pixels. If not provided,
         it takes the size 1/8 of the box_size
+    minsep_fwhm: float (Default: 3.0)
+        The minimum separation for detected objects in units of fwhm.
     convolve: bool (Default: True)
         Set to True to first convovle the image with a Gaussian kernel of
         size sigma (next argument). This allows better centroiding of

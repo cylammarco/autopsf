@@ -18,7 +18,7 @@ pixelscale_keyword: ["pixscale", "pixelscl", "pixscl", "arcpix", "arcscpix", "se
 # get_good_stars
 threshold: None
 threshold_snr: None
-threshold_clip_percentile: 80.0
+threshold_clip_percentile: 75.0
 box_size: 15
 fwhm: None # use the seeing value if not given
 convolve: True
@@ -33,9 +33,8 @@ stars_filename: "good_stars"
 save_stars_tbl: True
 stars_tbl_overwrite: True
 stars_tbl_filename: "good_stars_tbl"
-extract_stars_kwargs:
 get_good_stars_kwargs:
-  peakmax: 60000
+  peakmax: 55000
 
 # build_psf
 oversampling: None
@@ -45,7 +44,7 @@ create_figure: True
 save_figure: True
 stamps_nrows: None
 stamps_ncols: None
-figsize: (10, 10)
+figsize: [10, 10]
 stamps_figname: "PSF_stamps"
 psf_figname: "PSF"
 build_psf_output_folder: "."
@@ -58,3 +57,4 @@ center_list_filename: "epsf_center_list"
 build_psf_kwargs:
   num_iteration: 100
   n_recenter: 25
+  saturation_limit: 55000

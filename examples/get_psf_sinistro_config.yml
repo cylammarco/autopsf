@@ -18,14 +18,14 @@ pixelscale_keyword: ["pixscale", "pixelscl", "pixscl", "arcpix", "arcscpix", "se
 # get_good_stars
 threshold: null
 threshold_snr: null
-threshold_clip_percentile: 80.0
+threshold_clip_percentile: 75.0
 box_size: null # null to compute from the seeing and pixelscale
 fwhm: null # use the seeing value if not given
 convolve: True
 sigma: null
 npeaks: 100
 stars_tbl: null
-edge_size: 15
+edge_size: 35
 get_good_stars_output_folder: null # null will save to the same directory as the input
 save_stars: True
 stars_overwrite: True
@@ -34,7 +34,7 @@ save_stars_tbl: True
 stars_tbl_overwrite: True
 stars_tbl_filename: null # null will append "good_stars_tbl" to the input file name
 get_good_stars_kwargs:
-  peakmax: 60000
+  peakmax: 50000
 
 # build_psf
 oversampling: null
@@ -57,3 +57,6 @@ center_list_filename: null # null will append "psf_center_list" to the input fil
 build_psf_kwargs:
   num_iteration: 100
   n_recenter: 25
+  saturation_limit: 50000
+  kwargs_psf_stacking:
+    stacking_option: median
