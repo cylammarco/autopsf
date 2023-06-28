@@ -159,7 +159,12 @@ if params["subtract_background"]:
     image_data -= bkg.background
 
 # set the box size to 2 * 2 * seeing (box size has to be odd)
-box_size = int(np.ceil(seeing / pixel_scale) * 4 + 1)
+if params["box_size"] is None:
+    box_size = int(np.ceil(seeing / pixel_scale) * 4 + 1)
+else:
+    box_size = int(params["box_size"])
+    if box_size % 2 = 0:
+        box_size += 1
 
 if params["stars_filename"] is None:
     stars_filename = filename_no_extension + "_good_stars"
