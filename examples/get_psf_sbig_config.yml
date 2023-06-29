@@ -6,8 +6,10 @@ kwargs_remove_cr:
 
 subtract_background: True
 sigma_clip_sigma: 3.0
-background_box_size: 15
-background_filter_size: 15
+background_box_size: 51
+background_filter_size: 5
+background_filename: null # null will append "background" to the input file name
+background_subtracted_filename: null # null will append "background_subtracted" to the input file name
 
 # guess from header
 seeing: null
@@ -58,3 +60,5 @@ build_psf_kwargs:
   num_iteration: 100
   n_recenter: 25
   saturation_limit: 55000
+  kwargs_psf_stacking:
+    stacking_option: median

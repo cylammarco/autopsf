@@ -6,8 +6,10 @@ kwargs_remove_cr:
 
 subtract_background: True
 sigma_clip_sigma: 3.0
-background_box_size: 15
-background_filter_size: 15
+background_box_size: 51
+background_filter_size: 5
+background_filename: null # null will append "background" to the input file name
+background_subtracted_filename: null # null will append "background_subtracted" to the input file name
 
 # guess from header
 seeing: null
@@ -18,14 +20,14 @@ pixelscale_keyword: ["pixscale", "pixelscl", "pixscl", "arcpix", "arcscpix", "se
 # get_good_stars
 threshold: null
 threshold_snr: null
-threshold_clip_percentile: 75.0
+threshold_clip_percentile: 80.0
 box_size: null # null to compute from the seeing and pixelscale
 fwhm: null # use the seeing value if not given
 convolve: True
 sigma: null
 npeaks: 100
 stars_tbl: null
-edge_size: 35
+edge_size: 100
 get_good_stars_output_folder: null # null will save to the same directory as the input
 save_stars: True
 stars_overwrite: True

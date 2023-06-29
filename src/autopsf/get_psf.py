@@ -11,7 +11,9 @@ import psf
 import yaml
 from astropy.io import fits
 from astropy.stats import SigmaClip
+from astropy.visualization import simple_norm
 from astroscrappy import detect_cosmics
+from matplotlib import pyplot as plt
 from photutils.background import Background2D, MMMBackground
 
 # This returns where the Python instance started, not where this script is
@@ -144,6 +146,22 @@ if params["remove_cr"]:
     image_data = detect_cosmics(image_data, **params["kwargs_remove_cr"])[1]
 
 if params["subtract_background"]:
+    # get the background file name
+    if params["background_filename"] is None:
+        background_filename = filename_no_extension + "_background"
+    else:
+        background_filename = params["background_filename"]
+
+    # get the background file name
+    if params["background_subtracted_filename"] is None:
+        background_subtracted_filename = (
+            filename_no_extension + "_background_subtracted"
+        )
+    else:
+        background_subtracted_filename = params[
+            "background_subtracted_filename"
+        ]
+
     sigma_clip = SigmaClip(sigma=params["sigma_clip_sigma"])
     bkg_estimator = MMMBackground()
     bkg = Background2D(
@@ -156,14 +174,47 @@ if params["subtract_background"]:
         sigma_clip=sigma_clip,
         bkg_estimator=bkg_estimator,
     )
+
+    bkg_norm = simple_norm(bkg.background, "log", percent=95.0)
+    img_norm = simple_norm(image_data, "log", percent=99.0)
+    # save the background
+    plt.figure(1, params["figsize"])
+    plt.clf()
+    plt.imshow(bkg.background, origin="lower", aspect="auto", norm=bkg_norm)
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join(get_good_stars_output_folder, background_filename)
+    )
+
+    # save the image
+    plt.figure(2, params["figsize"])
+    plt.clf()
+    plt.imshow(image_data, origin="lower", aspect="auto", norm=img_norm)
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join(get_good_stars_output_folder, filename_no_extension)
+    )
+
+    # get the background subtracted image
     image_data -= bkg.background
+
+    # save the background subtracted image
+    plt.figure(3, params["figsize"])
+    plt.clf()
+    plt.imshow(image_data, origin="lower", aspect="auto", norm=img_norm)
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join(
+            get_good_stars_output_folder, background_subtracted_filename
+        )
+    )
 
 # set the box size to 2 * 2 * seeing (box size has to be odd)
 if params["box_size"] is None:
-    box_size = int(np.ceil(seeing / pixel_scale) * 4 + 1)
+    box_size = int(np.ceil(seeing / pixel_scale) * 6 + 1)
 else:
     box_size = int(params["box_size"])
-    if box_size % 2 = 0:
+    if box_size % 2 == 0:
         box_size += 1
 
 if params["stars_filename"] is None:
