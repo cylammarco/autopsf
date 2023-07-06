@@ -1,15 +1,30 @@
-# other pre-processing
+# pre-processing
+# cosmic ray
 remove_cr: True
+set_saturation_to_zero: True
 kwargs_remove_cr:
   gain: 1.4
   readnoise: 13.5
+  sigclip: 3.5
+  niter: 10
+  cleantype: idw
+  satlevel: 60000
 
+# Overall parameters
+output_folder: null # null will save to the same directory as the input
+
+# background subtraction
 subtract_background: True
-sigma_clip_sigma: 3.0
+sigma_clip: 3.0
+background_estimator: MMM
 background_box_size: 51
-background_filter_size: 5
+background_filter_size: 15
 background_filename: null # null will append "background" to the input file name
 background_subtracted_filename: null # null will append "background_subtracted" to the input file name
+save_background_figure: True
+save_background_fits: True
+background_figsize: [10, 10]
+bkg_kwargs: {}
 
 # guess from header
 seeing: null
@@ -17,18 +32,26 @@ pixelscale: null
 seeing_keyword: ["seeing", "l1seeing", "l1see", "dimmsee", "fwhm", "l1fwhm", "dimmfwhm"]
 pixelscale_keyword: ["pixscale", "pixelscl", "pixscl", "arcpix", "arcscpix", "secpix", "aspix"]
 
+# pre- get_good_stars
+n_fwhm: 4
+
 # get_good_stars
 threshold: null
-threshold_snr: null
-threshold_clip_percentile: 80.0
-box_size: null # null to compute from the seeing and pixelscale
-fwhm: null # use the seeing value if not given
+threshold_snr: 2.0
+threshold_sigma_clip: 3.0
+fwhm_pix: null # use the seeing value if not given
+box_size: null # null to compute from the seeing and pixelscale (This overrides n_fwhm)
+minsep_fwhm: 2.0
 convolve: True
+save_convolved_figure: True
+fig_size: [10, 10]
+convolved_figure_filename: null
 sigma: null
 npeaks: 100
 stars_tbl: null
-edge_size: 15
-get_good_stars_output_folder: null # null will save to the same directory as the input
+edge_size: 100
+save_dao_tbl: True
+dao_tbl_filename: null
 save_stars: True
 stars_overwrite: True
 stars_filename: null # null will append "_good_stars" to the input file name
@@ -36,12 +59,12 @@ save_stars_tbl: True
 stars_tbl_overwrite: True
 stars_tbl_filename: null # null will append "good_stars_tbl" to the input file name
 get_good_stars_kwargs:
-  peakmax: 55000
+  brightest: 100
+  peakmax: 60000
 
 # build_psf
-oversampling: null
+oversampling: 2
 return_oversampled: False
-smoothing_kernel: "quadratic"
 create_figure: True
 save_figure: True
 stamps_nrows: null
@@ -49,7 +72,6 @@ stamps_ncols: null
 figsize: [10, 10]
 stamps_figname: null # null will append "PSF_stamps" to the input file name
 psf_figname: null # null will append "PSF" to the input file name
-build_psf_output_folder: null # null will save to the same directory as the input
 save_psf_model: True
 model_overwrite: True
 model_filename: null # null will append "_psf_model" to the input file name
@@ -59,6 +81,6 @@ center_list_filename: null # null will append "psf_center_list" to the input fil
 build_psf_kwargs:
   num_iteration: 100
   n_recenter: 25
-  saturation_limit: 55000
+  saturation_limit: 60000
   kwargs_psf_stacking:
     stacking_option: median

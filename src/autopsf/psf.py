@@ -5,38 +5,161 @@ import os
 import pickle
 
 import numpy as np
+from astropy.io import fits
 from astropy.nddata import NDData
+from astropy.stats import SigmaClip, sigma_clipped_stats
 from astropy.table import Table
 from astropy.visualization import simple_norm
 from matplotlib import pyplot as plt
+from photutils.aperture import ApertureStats, CircularAperture
+from photutils.background import (
+    Background2D,
+    BiweightLocationBackground,
+    MeanBackground,
+    MedianBackground,
+    MMMBackground,
+    ModeEstimatorBackground,
+    SExtractorBackground,
+)
 from photutils.detection import DAOStarFinder
 from photutils.psf import extract_stars
+from photutils.segmentation import detect_sources, detect_threshold
+from photutils.utils import circular_footprint
 from psfr.psfr import stack_psf
 from scipy import ndimage, signal
+from scipy.optimize import curve_fit
 
-__all__ = ["get_good_stars", "build_psf"]
+__all__ = ["get_background", "get_good_stars", "build_psf"]
+
+
+def _gaus(X2, C, sigma):
+    # X2 is (X - X_mean)**2.0
+    return C * np.exp(-X2 / (2 * sigma**2))
+
+
+def get_background(
+    image_data,
+    image_header,
+    sigma=3.0,
+    background_estimator="MMM",
+    box_size=51,
+    filter_size=5,
+    output_folder=".",
+    background_filename="background",
+    background_subtracted_filename="background_subtracted",
+    save_figure=True,
+    save_fits=True,
+    fig_size=(10, 10),
+    **bkg_kwargs,
+):
+    sigma_clip = SigmaClip(sigma=sigma)
+
+    if background_estimator == "MMM":
+        bkg_estimator = MMMBackground(sigma_clip=sigma_clip, **bkg_kwargs)
+    elif background_estimator == "mean":
+        bkg_estimator = MeanBackground(sigma_clip=sigma_clip, **bkg_kwargs)
+    elif background_estimator == "median":
+        bkg_estimator = MedianBackground(sigma_clip=sigma_clip, **bkg_kwargs)
+    elif background_estimator == "Mode":
+        bkg_estimator = ModeEstimatorBackground(
+            sigma_clip=sigma_clip, **bkg_kwargs
+        )
+    elif background_estimator == "Biweight":
+        bkg_estimator = BiweightLocationBackground(
+            sigma_clip=sigma_clip, **bkg_kwargs
+        )
+    elif background_estimator == "SE":
+        bkg_estimator = SExtractorBackground(
+            sigma_clip=sigma_clip, **bkg_kwargs
+        )
+    else:
+        raise ValueError(
+            f"Unsupported background estimator {background_estimator}. "
+            "Please choose from MMM, mean, median and SE"
+        )
+
+    threshold_2D = detect_threshold(
+        image_data, nsigma=3.0, sigma_clip=sigma_clip
+    )
+    segment_img = detect_sources(image_data, threshold_2D, npixels=10)
+    footprint = circular_footprint(radius=10)
+    mask = segment_img.make_source_mask(footprint=footprint)
+    bkg = Background2D(
+        image_data,
+        (box_size, box_size),
+        filter_size=(
+            filter_size,
+            filter_size,
+        ),
+        mask=mask,
+        sigma_clip=sigma_clip,
+        bkg_estimator=bkg_estimator,
+    )
+
+    bkg_norm = simple_norm(bkg.background, "log", percent=95.0)
+    img_norm = simple_norm(image_data, "log", percent=99.0)
+
+    # get the background subtracted image
+    image_data -= bkg.background
+
+    if save_figure:
+        # save the background
+        plt.figure(1, fig_size)
+        plt.clf()
+        plt.imshow(
+            bkg.background, origin="lower", aspect="auto", norm=bkg_norm
+        )
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_folder, background_filename))
+
+        # save the background subtracted image
+        plt.figure(2, fig_size)
+        plt.clf()
+        plt.imshow(image_data, origin="lower", aspect="auto", norm=img_norm)
+        plt.tight_layout()
+        plt.savefig(
+            os.path.join(output_folder, background_subtracted_filename)
+        )
+
+    if save_fits:
+        background_subtracted_fits = fits.PrimaryHDU(image_data)
+        background_subtracted_fits.header = image_header
+        background_subtracted_fits.writeto(
+            os.path.join(
+                output_folder,
+                background_subtracted_filename + ".fits",
+            ),
+            overwrite=True,
+        )
+
+    return image_data, bkg
 
 
 def get_good_stars(
-    data,
+    image_data,
     threshold=None,
-    threshold_snr=None,
-    threshold_clip_percentile=80.0,
+    threshold_snr=3.0,
+    threshold_sigma_clip=3.0,
     box_size=35,
-    fwhm=None,
+    fwhm_pix=None,
     minsep_fwhm=2.5,
     convolve=True,
+    save_convolved_figure=True,
+    fig_size=(10, 10),
+    convolved_figure_filename="convolved_image",
     sigma=None,
-    npeaks=100,
     stars_tbl=None,
     edge_size=25,
     output_folder=".",
+    save_dao_tbl=True,
+    dao_tbl_filename="dao_tbl",
     save_stars=True,
     stars_overwrite=True,
     stars_filename="good_stars",
     save_stars_tbl=True,
     stars_tbl_overwrite=True,
     stars_tbl_filename="good_stars_tbl",
+    save_good_stars_figure=True,
     **kwargs,
 ):
     """
@@ -45,28 +168,19 @@ def get_good_stars(
 
     Parameters
     ----------
-    data: array_like
+    image_data: array_like
         The 2D array of the image.
     threshold: float or array-like (Default: None)
         The data value or pixel-wise data values to be used for the
         detection threshold. A 2D threshold must have the same shape as
         data. See photutils.detection.detect_threshold for one way to
-        create a threshold image. This overrides the next two arguments
-        threshold_snr and threshold_clip_percentile.
-    threshold_snr: float (Default: None)
-        If a threshold is not provided, it will be estimated from the image
-        by measuring the standard deviation of the image excluding the values
-        lower than the threshold_clip_percentile percentile. This SNR is the
-        multiplier to this standard deviation to define the threshold.
-    threshold_clip_percentile: float (Default: 80.0)
-        The percentile of the image value that will be clipped for detemining
-        the standard deviation of the image background.
+        create a threshold image.
     box_size: scalar or tuple, optional (Default: 15)
         The size of the local region to search for peaks at every point in
         data. If box_size is a scalar, then the region shape will be
         (box_size, box_size). Either box_size or footprint must be defined.
         If they are both defined, then footprint overrides box_size.
-    fwhm: float (Default: None)
+    fwhm_pix: float (Default: None)
         The full with at half maximum in unit of pixels. If not provided,
         it takes the size 1/8 of the box_size
     minsep_fwhm: float (Default: 3.0)
@@ -79,10 +193,6 @@ def get_good_stars(
     sigma: float (Default: None)
         Defining the size of the Gaussian kernel, if not provided, it takes
         the value of fwhm/2.355.
-    npeaks: int, optional (Default: 100)
-        The maximum number of peaks to return. When the number of detected
-        peaks exceeds npeaks, the peaks with the highest peak intensities
-        will be returned.
     stars_tbl: Table, list of Table, optional (Default: None)
         A catalog or list of catalogs of sources to be extracted from the
         input data. To link stars in multiple images as a single source,
@@ -111,6 +221,10 @@ def get_good_stars(
     output_folder: str (Default: ".")
         The base folder where the files will be saved. Defaulted to the current
         directory.
+    save_dao_tbl:
+
+    dao_tbl_filename:
+
     save_stars: bool (Default: True)
         Set to True to save the extracted stars, an EPSFStars instance
         (output of photutils.extract_stars())
@@ -138,56 +252,104 @@ def get_good_stars(
 
     """
 
-    if threshold_snr is None:
-        if convolve:
-            # 3.0-sigma detection
-            threshold_snr = 3.0
-
-        else:
-            # 5.0-sigma detection
-            threshold_snr = 5.0
-
-    else:
-        threshold_snr = float(threshold_snr)
-
     if threshold is None:
-        threshold = threshold_snr * np.nanstd(
-            data[data < np.nanpercentile(data, threshold_clip_percentile)]
+        sigma_clip = SigmaClip(sigma=threshold_sigma_clip)
+        threshold_2D = detect_threshold(
+            image_data, nsigma=3.0, sigma_clip=sigma_clip
         )
-
+        if sigma is None:
+            if fwhm_pix is None:
+                sigma = (box_size / 8) / 2.355
+            else:
+                sigma = fwhm_pix / 2.355
+        segment_img = detect_sources(
+            image_data, threshold_2D, npixels=int(3.1416 * sigma**2.0)
+        )
+        footprint = circular_footprint(radius=15)
+        mask = segment_img.make_source_mask(footprint=footprint)
+        mean, _, std = sigma_clipped_stats(image_data, sigma=3.0, mask=mask)
+        threshold = mean + std * threshold_snr
     else:
         threshold = float(threshold)
 
     print(f"threshold is set at {threshold}.")
 
-    if fwhm is None:
-        fwhm = box_size / 8
-
     # Convolve with 2D gaussian to improve centroiding
     # First a 1-D  Gaussian
     if convolve:
-        if sigma is None:
-            sigma = fwhm / 2.355
-
-        t = np.linspace(-10, 10, 30)
-        bump = np.exp(-0.5 * (t / fwhm) ** 2)
+        t = np.linspace(-box_size, box_size, box_size * 5)
+        bump = np.exp(-0.5 * (t / sigma) ** 2)
         bump /= np.trapz(bump)  # normalize the integral to 1
 
         # make a 2-D kernel out of it
         kernel = bump[:, np.newaxis] * bump[np.newaxis, :]
 
-        data_convolved = signal.fftconvolve(data, kernel, mode="same")
+        data_convolved = signal.fftconvolve(image_data, kernel, mode="same")
+
+        if save_convolved_figure:
+            convolved_img_norm = simple_norm(
+                data_convolved[edge_size:-edge_size, edge_size:-edge_size],
+                "log",
+                percent=99.0,
+            )
+
+            plt.figure(1, fig_size)
+            plt.clf()
+            plt.imshow(
+                data_convolved,
+                origin="lower",
+                aspect="auto",
+                norm=convolved_img_norm,
+            )
+            plt.tight_layout()
+            plt.savefig(os.path.join(output_folder, convolved_figure_filename))
 
     else:
-        data_convolved = data
+        data_convolved = image_data
 
     if stars_tbl is None:
-        # detect peaks and remove sources near the edge
-        daofind = DAOStarFinder(fwhm=fwhm, threshold=threshold, **kwargs)
+        # First iteration to get the FWHM if fwhm_pix was None
+        if fwhm_pix is None:
+            _fwhm_pix = box_size / 8.0
+
+            # detect peaks and remove sources near the edge
+            daofind = DAOStarFinder(
+                fwhm=_fwhm_pix, threshold=threshold, **kwargs
+            )
+            peaks_tbl = daofind(
+                data_convolved[edge_size:-edge_size, edge_size:-edge_size]
+            )
+            peaks_sort_mask = np.argsort(-peaks_tbl["flux"])
+            peaks_tbl = peaks_tbl[peaks_sort_mask]
+            _x = peaks_tbl["xcentroid"] + edge_size
+            _y = peaks_tbl["ycentroid"] + edge_size
+
+            aper = CircularAperture(zip(_x, _y), _fwhm_pix * 2)
+            aperstats = ApertureStats(image_data, aper)
+            fwhm_pix = np.median(aperstats.fwhm.value)
+            box_size = int((fwhm_pix * 8 // 2) * 2 + 1)
+
+            if convolve:
+                sigma = fwhm_pix / 2.355
+                t = np.linspace(-box_size, box_size, box_size * 5)
+                bump = np.exp(-0.5 * (t / sigma) ** 2)
+                bump /= np.trapz(bump)  # normalize the integral to 1
+
+                # make a 2-D kernel out of it
+                kernel = bump[:, np.newaxis] * bump[np.newaxis, :]
+
+                data_convolved = signal.fftconvolve(
+                    image_data, kernel, mode="same"
+                )
+
+        else:
+            fwhm_pix = float(fwhm_pix)
+
+        # Get the stars here
+        daofind = DAOStarFinder(fwhm=fwhm_pix, threshold=threshold, **kwargs)
         peaks_tbl = daofind(
             data_convolved[edge_size:-edge_size, edge_size:-edge_size]
         )
-
         peaks_sort_mask = np.argsort(-peaks_tbl["flux"])
         peaks_tbl = peaks_tbl[peaks_sort_mask]
         _x = peaks_tbl["xcentroid"]
@@ -197,7 +359,7 @@ def get_good_stars(
         distances = np.array(
             [np.linalg.norm(coord - p, axis=1) for p in coord]
         )
-        mask = distances < box_size
+        mask = distances < fwhm_pix * minsep_fwhm
         # Ignore distnace to itself
         for i, _ in enumerate(_x):
             mask[i][i] = False
@@ -207,6 +369,12 @@ def get_good_stars(
 
         x = peaks_tbl["xcentroid"]
         y = peaks_tbl["ycentroid"]
+
+        if save_dao_tbl:
+            dao_tbl_output_path = os.path.join(
+                output_folder, dao_tbl_filename + ".npy"
+            )
+            np.save(dao_tbl_output_path, peaks_tbl)
 
         stars_tbl = Table()
         stars_tbl["x"] = x + edge_size
@@ -227,11 +395,9 @@ def get_good_stars(
             else:
                 np.save(stars_tbl_output_path, stars_tbl)
 
-    nddata = NDData(data=data)
+    nddata = NDData(data=image_data)
 
-    # assign npeaks mask again because if stars_tbl is given, the npeaks
-    # have to be selected
-    stars = extract_stars(nddata, catalogs=stars_tbl[:npeaks], size=box_size)
+    stars = extract_stars(nddata, catalogs=stars_tbl, size=box_size)
 
     if save_stars:
         stars_output_path = os.path.join(
@@ -247,14 +413,52 @@ def get_good_stars(
             with open(stars_output_path, "wb+") as f:
                 pickle.dump(stars, f)
 
-    return stars, stars_tbl, threshold, fwhm
+    if save_good_stars_figure:
+        img_norm = simple_norm(
+            image_data[edge_size:-edge_size, edge_size:-edge_size],
+            "log",
+            percent=99.0,
+        )
+        img_width, img_height = np.shape(image_data)
+
+        plt.figure(1, fig_size)
+        plt.clf()
+        plt.imshow(image_data, origin="lower", aspect="auto", norm=img_norm)
+        plt.scatter(
+            stars_tbl["x"],
+            stars_tbl["y"],
+            s=box_size / 2,
+            facecolors="none",
+            edgecolors="r",
+        )
+        plt.plot(
+            [
+                edge_size,
+                edge_size,
+                img_width - edge_size,
+                img_width - edge_size,
+                edge_size,
+            ],
+            [
+                edge_size,
+                img_height - edge_size,
+                img_height - edge_size,
+                edge_size,
+                edge_size,
+            ],
+            c="black",
+            ls=":",
+        )
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_folder, stars_filename))
+
+    return stars, stars_tbl, threshold, fwhm_pix
 
 
 def build_psf(
     stars,
     oversampling=None,
     return_oversampled=False,
-    smoothing_kernel="quadratic",
     create_figure=True,
     save_figure=True,
     stamps_nrows=None,
@@ -285,12 +489,6 @@ def build_psf(
         or a tuple of two floats of the form (x_oversamp, y_oversamp). If
         oversampling is a scalar then the oversampling will be the same for
         both the x and y axes.
-    smoothing_kernel: {'quartic', 'quadratic'}, 2D ndarray, or None
-                    (Default: quartic')
-        The smoothing kernel to apply to the ePSF. The predefined 'quartic'
-        and 'quadratic' kernels are derived from fourth and second degree
-        polynomials, respectively. Alternatively, a custom 2D array can be
-        input. If None then no smoothing will be performed.
     create_figure: bool (Default: True)
         Create and display the cutouts of the regions used for building the
         PSF.
@@ -349,18 +547,12 @@ def build_psf(
     """
 
     if oversampling is None:
-        # Make sure the oversampling factor is sensible for the number
-        # of stars available.
-        if smoothing_kernel == "quartic":
-            divisor = 4
-        elif smoothing_kernel == "quadratic":
-            divisor = 2
-        else:
-            divisor = 1
-        oversampling = int(np.sqrt(len(stars) // divisor)) - 1
+        oversampling = int(np.sqrt(len(stars))) - 1
         oversampling = oversampling - oversampling % 2
         if oversampling < 2:
             oversampling = 2
+
+    oversampling = int(oversampling)
 
     # Build the PSFs
     postage_stamps = [i.data for i in stars]
@@ -447,6 +639,9 @@ def build_psf(
 
         else:
             np.save(model_output_path, psf_guess)
+            fits.PrimaryHDU(psf_guess).writeto(
+                model_output_path + ".fits", overwrite=True
+            )
 
     if save_center_list:
         center_list_output_path = os.path.join(
